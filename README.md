@@ -33,9 +33,15 @@ async for chunk in body:
 
 ## Method and body changing
 
-By default, for 301, 302 and 303 redirects, HEAD and GET requests are redirected with unchanged methods and bodies, and other methods are converted into GETs with empty bodies. For 307 and 308 redirects, the method and bodies are always unchanged.
+The default behavior is as below.
 
-Note however, that an unchanged body is actually _not_ guaranteed by this wrapper. For each request the function passed as the `body` argument is called, and it may return different things on each call. It is up the the developer to handle this case as needed: there is no one-size-fits all approach, since for streaming requests, the body may not be available again. In many cases, a redirect that expects a resubmission of a large upload may be an error; or if an API is never expected to return a redirect, _not_ using this wrapper may be a viable option.
+- 301, 302 redirects from a POST are converted to GETs with empty bodies; all other requests do not change methods and bodies.
+
+- 303 redirects, all non HEAD and GET requests are converted to GETs with empty bodies.
+
+- 307 and 308 redirects, the method and bodies are always unchanged.
+
+Note however, that an unchanged body is actually _not_ guaranteed by this wrapper. For each request the function passed as the `body` argument is called, and it may return different things on each call. It is up the the developer to handle this case as needed: there is no one-size-fits all approach, since for streaming requests, the body may not be available again. In many cases, a redirect that expects a resubmission of a large upload may be an error; or if an API is never expected to return a redirect, _not_ using this wrapper at all may be a viable option, and instead a few lines of code that raises an exception if a redirect is returned from the server.
 
 
 ## Customise redirects
@@ -43,20 +49,25 @@ Note however, that an unchanged body is actually _not_ guaranteed by this wrappe
 It is possible to customise which redirects are followed, and how they affect the method and body. As an example, to recreate the default behaviour explicitly, the below code could be used.
 
 ```python
-def get(_, _):
+def get(_, _, request_headers):
     # Asynchronous generator that end immediately, and results in an empty body
     async def empty_body():
         while False:
             yield
 
-    return (b'GET', empty_body)
+    headers = tuple(
+        (key, value)
+        for key, value in request_headers if key.lower() not in (b'content-length', b'transfer-encoding')
+    )
 
-def unchanged(method, body):
-    return (method, body)
+    return (b'GET', headers, empty_body)
+
+def unchanged(method, body, headers):
+    return (method, headers, body)
 
 redirectable_request = redirectable(request, redirects=(
     # Omit codes to not follow redirect
-    (b'301', unchanged if method in (b'GET', b'HEAD') else get),
+    (b'301', unchanged if method != b'POST' else get),
     (b'302', unchanged if method in (b'GET', b'HEAD') else get),
     (b'303', unchanged if method in (b'GET', b'HEAD') else get),
     (b'307', unchanged),
@@ -78,7 +89,7 @@ def strip_authorization_if_different_host(request_url, request_headers, redirect
         ()
     return tuple(
         (key, value)
-        for key, value in request_headers if key.lower() in forbidden
+        for key, value in request_headers if key.lower() not in forbidden
     )
 
 redirectable_request = redirectable(request, headers=strip_authorization_if_different_host)
