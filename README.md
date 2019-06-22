@@ -1,4 +1,4 @@
-# lowhaio-redirect
+# lowhaio-redirect [![CircleCI](https://circleci.com/gh/michalc/lowhaio-redirect.svg?style=svg)](https://circleci.com/gh/michalc/lowhaio-redirect)
 
 Wrapper of lowhaio that follows HTTP redirects
 
