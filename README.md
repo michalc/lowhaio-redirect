@@ -2,8 +2,6 @@
 
 Wrapper of lowhaio that follows HTTP redirects
 
-> This is a work in-progress. This document serves as a rough design spec.
-
 
 ## Installation
 
