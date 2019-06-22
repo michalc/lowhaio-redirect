@@ -49,29 +49,29 @@ Note however, that an unchanged body is actually _not_ guaranteed by this wrappe
 It is possible to customise which redirects are followed, and how they affect the method and body. As an example, to recreate the default behaviour explicitly, the below code could be used.
 
 ```python
-def get(_, _, request_headers):
+def get(method, body, body_args, body_kwargs, headers):
     # Asynchronous generator that end immediately, and results in an empty body
     async def empty_body():
         while False:
             yield
-
-    headers = tuple(
+    next_request_headers = tuple(
         (key, value)
-        for key, value in request_headers if key.lower() not in (b'content-length', b'transfer-encoding')
+        for key, value in headers if key.lower() not in (b'content-length', b'transfer-encoding')
     )
 
-    return (b'GET', headers, empty_body)
+    return (b'GET', empty_body, (), (), next_request_headers)
 
-def unchanged(method, body, headers):
-    return (method, headers, body)
+
+def unchanged(method, body, body_args, body_kwargs, headers):
+    return (method, body, body_args, body_kwargs, headers)
+
 
 redirectable_request = redirectable(request, redirects=(
-    # Omit codes to not follow redirect
-    (b'301', unchanged if method != b'POST' else get),
-    (b'302', unchanged if method in (b'GET', b'HEAD') else get),
-    (b'303', unchanged if method in (b'GET', b'HEAD') else get),
-    (b'307', unchanged),
-    (b'308', unchanged),
+    (b'301', lambda method: unchanged if method != b'POST' else get),
+    (b'302', lambda method: unchanged if method != b'POST' else get),
+    (b'303', lambda method: unchanged if method in (b'GET', b'HEAD') else get),
+    (b'307', lambda method: unchanged),
+    (b'308', lambda method: unchanged),
 ))
 ```
 
@@ -81,16 +81,14 @@ redirectable_request = redirectable(request, redirects=(
 By default, the Authorization header is not passed to if redirected to another domain. This can be customised. As an example, to recreate the default behaviour explicitly, the below code can be used.
 
 ```python
-def strip_authorization_if_different_host(request_url, request_headers, redirect_url, redirect_headers):
-    host_request = urllib.parse.urlsplit(request_url).hostname
-    host_redirect = urllib.parse.urlsplit(redirect_url).hostname
+def strip_authorization_if_different_host(request_headers, request_host, redirect_host):
     forbidden = \
-        (b'authorization',) if host_request != host_redirect else \
+        (b'authorization',) if request_host != redirect_host else \
         ()
     return tuple(
         (key, value)
         for key, value in request_headers if key.lower() not in forbidden
     )
 
-redirectable_request = redirectable(request, headers=strip_authorization_if_different_host)
+redirectable_request = redirectable(request, transform_headers=strip_authorization_if_different_host)
 ```
